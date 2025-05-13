@@ -1,0 +1,2 @@
+javac spaceshipcruiser.java
+java spaceshipcruiser
