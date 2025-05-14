@@ -1,5 +1,7 @@
 # SpaceShip Cruiser
 
+## YOU NEED JAVA SE DEVELOPMENT KIT IF YOU'RE RUNNING DEV VERSIONS.
+
 SpaceShip Cruiser is a fun and challenging space-themed game where you control a spaceship and must avoid falling meteorites. The game features a scoring system, a highscore tracker, and smooth gameplay mechanics.
 
 ## Features
