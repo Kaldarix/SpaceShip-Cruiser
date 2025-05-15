@@ -8,11 +8,12 @@ import java.util.Set;
 import java.util.Iterator;
 import java.io.File;
 import java.io.IOException;
-import javax.imageio.ImageIO;  // Added import for ImageIO
-import java.io.FileNotFoundException; // Added import for exception handling
+import javax.imageio.ImageIO;  
+import java.io.FileNotFoundException; 
 import java.io.FileWriter;
 import java.io.BufferedReader;
 import java.io.FileReader;
+import javax.sound.sampled.*;
 
 public class spaceshipcruiser extends JPanel implements ActionListener {
     private static final int BASE_WIDTH = 800;
@@ -36,10 +37,14 @@ public class spaceshipcruiser extends JPanel implements ActionListener {
     private final ArrayList<Image> meteoriteImages = new ArrayList<>();
     private final Random rand = new Random();
 
-    private static final String HIGH_SCORE_FILE = "userdata/highscore.txt";  // Path to high score file
+    private static final String HIGH_SCORE_FILE = "assets/userdata/highscore.txt";
+
+    private static final String SOUND_FILE = "assets/sounds/points.wav"; 
+	
+	private static final String DEATH_SOUND = "assets/sounds/death.wav";
 
     public static void main(String[] args) {
-        JFrame frame = new JFrame("SpaceShip Cruiser");
+        JFrame frame = new JFrame("SpaceShip Cruiser 1.0");
         spaceshipcruiser game = new spaceshipcruiser();
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(BASE_WIDTH, BASE_HEIGHT);
@@ -52,10 +57,10 @@ public class spaceshipcruiser extends JPanel implements ActionListener {
         setFocusable(true);
         setBackground(Color.BLACK);
         setDoubleBuffered(true);
-        setLayout(null); // Manual button placement
+        setLayout(null);
 
         loadTextures();
-        loadHighScore();  // Load highscore from file
+        loadHighScore();
 
         timer = new Timer(1000 / 60, this);
         timer.start();
@@ -79,8 +84,8 @@ public class spaceshipcruiser extends JPanel implements ActionListener {
 
     private void loadTextures() {
         try {
-            spaceshipImg = ImageIO.read(new File("textures/ships/ship1.jpg"));
-            File[] files = new File("textures/meteorites/").listFiles();
+            spaceshipImg = ImageIO.read(new File("assets/textures/ships/ship1.jpg"));
+            File[] files = new File("assets/textures/meteorites/").listFiles();
             if (files != null) {
                 for (File file : files) {
                     if (file.isFile() && file.getName().toLowerCase().endsWith(".jpg")) {
@@ -106,12 +111,7 @@ public class spaceshipcruiser extends JPanel implements ActionListener {
             if (line != null) {
                 highScore = Integer.parseInt(line);
             }
-        } catch (FileNotFoundException e) {
-            // File doesn't exist, so we'll just leave highScore as 0
-        } catch (IOException | NumberFormatException e) {
-            // Error reading the file or invalid format, so default to 0
-            e.printStackTrace();
-        }
+        } catch (IOException | NumberFormatException ignored) {}
     }
 
     private void saveHighScore() {
@@ -122,48 +122,79 @@ public class spaceshipcruiser extends JPanel implements ActionListener {
         }
     }
 
-    @Override
-    public void actionPerformed(ActionEvent e) {
-        if (!gameOver) updateGame();
-        repaint();
+    private int getBlockSpeed() {
+        return 5 + (score / 10);
     }
 
-    private void updateGame() {
-        // Smooth steering
-        if (keysPressed.contains(KeyEvent.VK_LEFT) && playerX > 0)
-            playerX -= 7;
-        if (keysPressed.contains(KeyEvent.VK_RIGHT) && playerX < BASE_WIDTH - PLAYER_SIZE)
-            playerX += 7;
+    private void playSound(String soundFile) {
+        try {
+            File sound = new File(soundFile);
+            AudioInputStream audioIn = AudioSystem.getAudioInputStream(sound);
+            Clip clip = AudioSystem.getClip();
+            clip.open(audioIn);
+            clip.start();
+        } catch (UnsupportedAudioFileException | IOException | LineUnavailableException e) {
+            e.printStackTrace();
+        }
+    }
+	
+	private void deathSound(String soundFilePath) {
+    try {
+        File soundFile = new File(soundFilePath);
+        AudioInputStream audioIn = AudioSystem.getAudioInputStream(soundFile);
+        Clip clip = AudioSystem.getClip();
+        clip.open(audioIn);
+        clip.start();
+    } catch (UnsupportedAudioFileException | IOException | LineUnavailableException e) {
+        System.err.println("Błąd przy odtwarzaniu dźwięku: " + e.getMessage());
+    }
+}
 
-        // Update blocks
-        Iterator<Block> iter = blocks.iterator();
-        while (iter.hasNext()) {
-            Block block = iter.next();
-            block.fall();
 
-            if (block.y > BASE_HEIGHT) {
-                score++;
-                highScore = Math.max(highScore, score);
-                iter.remove();
-                continue;
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        if (!gameOver) {
+            if (keysPressed.contains(KeyEvent.VK_LEFT) && playerX > 0) {
+                playerX -= 7;
+            }
+            if (keysPressed.contains(KeyEvent.VK_RIGHT) && playerX < BASE_WIDTH - PLAYER_SIZE) {
+                playerX += 7;
             }
 
-            // Collision detection
-            Rectangle playerRect = new Rectangle(playerX, BASE_HEIGHT - PLAYER_SIZE - 30, PLAYER_SIZE, PLAYER_SIZE);
-            Rectangle blockRect = new Rectangle(block.x, block.y, BLOCK_SIZE, BLOCK_SIZE);
-            if (playerRect.intersects(blockRect)) {
-                gameOver = true;
-                blocks.clear();
-                respawnButton.setVisible(true);
-                saveHighScore();  // Save highscore when game over
-                break;
+            Iterator<Block> iter = blocks.iterator();
+            while (iter.hasNext()) {
+                Block block = iter.next();
+                block.fall();
+
+                if (block.y > BASE_HEIGHT) {
+                    score++;
+                    if (score > highScore) highScore = score;
+                    if (score % 50 == 0) {  
+                        playSound(SOUND_FILE);
+                    }
+                    iter.remove();
+                    continue;
+                }
+
+                Rectangle playerRect = new Rectangle(playerX, BASE_HEIGHT - PLAYER_SIZE - 30, PLAYER_SIZE, PLAYER_SIZE);
+                Rectangle blockRect = new Rectangle(block.x, block.y, BLOCK_SIZE, BLOCK_SIZE);
+
+                if (playerRect.intersects(blockRect)) {
+					playSound(DEATH_SOUND);
+                    gameOver = true;
+                    blocks.clear();
+                    respawnButton.setVisible(true);
+                    saveHighScore();
+                    break;
+                }
+            }
+
+            if (rand.nextInt(30) == 1) {
+                blocks.add(new Block(rand.nextInt(BASE_WIDTH - BLOCK_SIZE), -BLOCK_SIZE, getBlockSpeed()));
             }
         }
 
-        // Random block spawn
-        if (new Random().nextInt(30) == 1) {
-            blocks.add(new Block(new Random().nextInt(BASE_WIDTH - BLOCK_SIZE), -BLOCK_SIZE));
-        }
+        repaint();
     }
 
     @Override
@@ -192,20 +223,31 @@ public class spaceshipcruiser extends JPanel implements ActionListener {
         int btnHeight = 40;
         int btnX = (int) ((BASE_WIDTH / 2.0 - btnWidth / 2.0) * scaleX);
         int btnY = (int) ((BASE_HEIGHT / 2.0 + 80) * scaleY);
-        respawnButton.setBounds(btnX, btnY, (int)(btnWidth * scaleX), (int)(btnHeight * scaleY));
+        respawnButton.setBounds(btnX, btnY, (int) (btnWidth * scaleX), (int) (btnHeight * scaleY));
     }
 
     private void drawGame(Graphics2D g) {
-        // Draw spaceship with texture
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+
         g.drawImage(spaceshipImg, playerX, BASE_HEIGHT - PLAYER_SIZE - 30, PLAYER_SIZE, PLAYER_SIZE, null);
 
-        // Draw meteorites with random textures
         for (Block block : blocks) {
-            int meteoriteIndex = rand.nextInt(meteoriteImages.size());
-            g.drawImage(meteoriteImages.get(meteoriteIndex), block.x, block.y, BLOCK_SIZE, BLOCK_SIZE, null);
+            Graphics2D g2d = (Graphics2D) g.create();
+
+            int centerX = block.x + BLOCK_SIZE / 2;
+            int centerY = block.y + BLOCK_SIZE / 2;
+
+            block.angle += 0.001;
+
+            g2d.rotate(block.angle, centerX, centerY);
+
+            Image meteorite = meteoriteImages.get(rand.nextInt(meteoriteImages.size()));
+            g2d.drawImage(meteorite, block.x, block.y, BLOCK_SIZE, BLOCK_SIZE, null);
+
+            g2d.dispose();
         }
 
-        // Score display
         g.setColor(Color.WHITE);
         g.setFont(new Font("Arial", Font.PLAIN, 20));
         g.drawString("Score: " + score, 10, 30);
@@ -213,6 +255,7 @@ public class spaceshipcruiser extends JPanel implements ActionListener {
     }
 
     private void drawGameOver(Graphics2D g) {
+		
         g.setColor(Color.RED);
         g.setFont(new Font("Arial", Font.BOLD, 50));
         g.drawString("GAME OVER", BASE_WIDTH / 3, BASE_HEIGHT / 3);
@@ -221,26 +264,32 @@ public class spaceshipcruiser extends JPanel implements ActionListener {
         g.setFont(new Font("Arial", Font.PLAIN, 30));
         g.drawString("Score: " + score, BASE_WIDTH / 3, BASE_HEIGHT / 2);
         g.drawString("Highscore: " + highScore, BASE_WIDTH / 3, BASE_HEIGHT / 2 + 40);
-    }
+	}
+	
+	private void restartGame() {
+		score = 0;
+		gameOver = false;
+		blocks.clear();
+		respawnButton.setVisible(false);
+	
+		repaint();
+	}
 
-    private void restartGame() {
-        playerX = BASE_WIDTH / 2;
-        score = 0;
-        blocks.clear();
-        gameOver = false;
-        respawnButton.setVisible(false);
-    }
+	class Block {
+		int x, y;
+		int speed;
+		double angle;
 
-    private static class Block {
-        int x, y;
+		public Block(int x, int y, int speed) {
+			this.x = x;
+			this.y = y;
+			this.speed = speed;
+			this.angle = 0;
+		}
 
-        public Block(int x, int y) {
-            this.x = x;
-            this.y = y;
-        }
-
-        public void fall() {
-            y += 5;
-        }
-    }
+			public void fall() {
+			y += speed;
+			angle += 0.05;
+		}
+	}
 }
